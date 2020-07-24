@@ -25,7 +25,8 @@ public class RepGraphTest : ModuleRules
 			{
 				"Slate", 
 				"SlateCore",
-				"OnlineSubsystem"
+				"OnlineSubsystem",
+				"ReplicationGraph"
 			});
 	}
 }
