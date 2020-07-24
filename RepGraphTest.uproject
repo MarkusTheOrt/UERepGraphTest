@@ -1,0 +1,26 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "{E69F2AAD-4BFF-707F-5089-90B9EB1A2A13}",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "RepGraphTest",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"ReplicationGraph"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ReplicationGraph",
+			"Enabled": true
+		},
+		{
+			"Name": "RiderLink",
+			"Enabled": true
+		}
+	]
+}
