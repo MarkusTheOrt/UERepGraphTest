@@ -21,6 +21,18 @@ void AUnit::BeginPlay()
 	
 }
 
+void AUnit::OnUnitSpawned_Implementation(AMiniUnit* Actor)
+{
+	UnitActors.Add(Actor);
+}
+
+void AUnit::AddAdditionalUnit_Implementation(TSubclassOf<AMiniUnit> NewClass)
+{
+	AMiniUnit* NewUnit = GetWorld()->SpawnActor<AMiniUnit>(NewClass);
+	UnitActors.Add(NewUnit);
+	UnitTransforms.AddDefaulted();
+	OnUnitSpawned(NewUnit);
+}
 
 void AUnit::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {

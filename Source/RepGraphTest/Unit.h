@@ -24,10 +24,19 @@ protected:
 
 	// Lets try not to replicate this one for now.
 	UPROPERTY()
-	TArray<AActor*> UnitActors;
+	TArray<class AMiniUnit*> UnitActors;
 	
 	UPROPERTY(Replicated)
 	TArray<FTransform> UnitTransforms;
+
+	UFUNCTION(NetMulticast, Reliable)
+	void OnUnitSpawned(class AMiniUnit* Actor);
+
+	UFUNCTION(Server, Reliable)
+	void AddAdditionalUnit(TSubclassOf<class AMiniUnit> NewClass);
+
+	UPROPERTY(EditDefaultsOnly)
+	TSubclassOf<class AMiniUnit> DefaultSpawnClass;
 	
 public:	
 
