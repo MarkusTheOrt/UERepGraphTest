@@ -3,185 +3,187 @@
 
 #include "TestRepGraph.h"
 
+#include "EngineUtils.h"
 #include "Unit.h"
-#include "Engine/LevelScriptActor.h"
-#include "GameFramework/PlayerState.h"
 
 
-void InitClassReplicationInfo(FClassReplicationInfo& Info, UClass* Class, float ServerMaxTickRate)
-{
-	AActor* CDO = Class->GetDefaultObject<AActor>();
-
-	Info.ReplicationPeriodFrame = FMath::Max<uint32>( (uint32)FMath::RoundToFloat(ServerMaxTickRate / CDO->NetUpdateFrequency), 1);
-
-	UClass* NativeClass = Class;
-	while(!NativeClass->IsNative() && NativeClass->GetSuperClass() && NativeClass->GetSuperClass() != AActor::StaticClass())
-	{
-		NativeClass = NativeClass->GetSuperClass();
-	}
-}
-
-void UTestRepGraph::InitGlobalGraphNodes()
-{
-	UE_LOG(LogTemp, Warning, TEXT("REP Graph Init Nodes"));
-	PreAllocateRepList(3, 12);
-	PreAllocateRepList(6, 12);
-	PreAllocateRepList(128, 64);
-	PreAllocateRepList(512, 16);
-
-	// -----------------------------------------------------------------------------------------------------------------
-	// Spawn our Nodes
-
-	DynNode = CreateNewNode<UTestRepGraphNode_DynamicRepNode>();
-
-	AddGlobalGraphNode(DynNode);
-	
-	AlwaysRelevantNode = CreateNewNode<UReplicationGraphNode_ActorList>();
-	
-	AddGlobalGraphNode(AlwaysRelevantNode);
-
-	const auto PlayerStateNode = CreateNewNode<UTestRepGraphNode_PlayerState_FrequencyLimiter>();
-	AddGlobalGraphNode(PlayerStateNode);
-}
-
-void UTestRepGraph::InitConnectionGraphNodes(UNetReplicationGraphConnection* ConnectionManager)
-{
-	Super::InitConnectionGraphNodes(ConnectionManager);
-	const auto AlwaysRelevantPerNode = CreateNewNode<UReplicationGraphNode_AlwaysRelevant_ForConnection>();
-
-	AddConnectionGraphNode(AlwaysRelevantNode, ConnectionManager);
-}
 
 void UTestRepGraph::InitGlobalActorClassSettings()
 {
 	Super::InitGlobalActorClassSettings();
-
-
-	auto AddInfo = [&]( UClass* Class, EClassRepPolicies Mapping) { ClassRepNodePolicies.Set(Class, Mapping); };
-
-	
-	AddInfo( AUnit::StaticClass(), 						EClassRepPolicies::Units );
-	AddInfo( AInfo::StaticClass(), 						EClassRepPolicies::RelevantAllConnections );
-
-	// Not needed
-	AddInfo( ALevelScriptActor::StaticClass(), 			EClassRepPolicies::NotRouted );
-
-	// This will be handled by the PlayerState Frequency limiter
-	AddInfo( APlayerState::StaticClass(), 				EClassRepPolicies::NotRouted );
-
-	// Special case from UE - not Needed.
-	AddInfo( AReplicationGraphDebugActor::StaticClass(),EClassRepPolicies::NotRouted );
-
-	TArray<UClass*> AllReplicatedClasses;
-
-	for(TObjectIterator<UClass> It; It; ++It)
+	UE_LOG(LogTemp, Warning, TEXT("RepGraph Started"));
+	for (TObjectIterator<UClass> It; It; ++It)
 	{
 		UClass* Class = *It;
 		AActor* ActorCDO = Cast<AActor>(Class->GetDefaultObject());
 
-		// Skip Non-Actor classes and Non-Replicated classes.
 		if(!ActorCDO || !ActorCDO->GetIsReplicated())
+		{
 			continue;
+		}
 
-		// Skip SKEL and REINST classes (I have no idea what they are, but this is in the shooter game as well)
 		if(Class->GetName().StartsWith(TEXT("SKEL_")) || Class->GetName().StartsWith(TEXT("REINST_")))
+		{
 			continue;
+		}
+
 		
+        // This is old.
+        if (ActorCDO->IsA<AUnit>())
+        {
+	        FClassReplicationInfo UnitInfo;
+        	UnitInfo.ReplicationPeriodFrame = FMath::Max<uint32>(NetDriver->NetServerMaxTickRate / ActorCDO->NetUpdateFrequency, 1);
+        	GlobalActorReplicationInfoMap.SetClassInfo(Class, UnitInfo);
+        	
+        } else
+        {
+        	
+        	FClassReplicationInfo ClassInfo;
 
-		// This is a replicated Actor class.
-		AllReplicatedClasses.Add(Class);
-
-		// Skip the above manually added ones.
-		if(ClassRepNodePolicies.Contains(Class, false))
-			continue;
-
-		// Filter out classes that do differ from their parents:
-		UClass* SuperClass = Class->GetSuperClass();
-		if(AActor* SuperCDO = Cast<AActor>(SuperClass->GetDefaultObject()))
-		{
-			if(		SuperCDO->GetIsReplicated() == ActorCDO->GetIsReplicated()
-				 && SuperCDO->bAlwaysRelevant == ActorCDO->bAlwaysRelevant
-				 && SuperCDO->bOnlyRelevantToOwner == ActorCDO->bOnlyRelevantToOwner
-				 && SuperCDO->bNetUseOwnerRelevancy == ActorCDO->bNetUseOwnerRelevancy
-				 )
-				continue;			
-		}
-
-		if(ActorCDO->IsA<AUnit>())
-		{
-			AddInfo(Class, EClassRepPolicies::Units);
-		}
-		else if(ActorCDO->bAlwaysRelevant && !ActorCDO->bOnlyRelevantToOwner)
-		{
-			AddInfo(Class, EClassRepPolicies::RelevantAllConnections);
-		}
-	}
-
-	TArray<UClass*> ExplicitlySetClasses;
-	auto SetClassInfo = [&](UClass* Class, const FClassReplicationInfo& Info)
-	{
-		GlobalActorReplicationInfoMap.SetClassInfo(Class, Info);
-		ExplicitlySetClasses.Add(Class);
-	};
-
-	FClassReplicationInfo UnitRepInfo;
-	UnitRepInfo.DistancePriorityScale = 0.f;
-	UnitRepInfo.StarvationPriorityScale = 1.f;
-	UnitRepInfo.ActorChannelFrameTimeout = 0;
-	
-	SetClassInfo( APawn::StaticClass(), UnitRepInfo );
-	SetClassInfo( AUnit::StaticClass(), UnitRepInfo );
-
-	UReplicationGraphNode_ActorListFrequencyBuckets::DefaultSettings.ListSize = 12;
-
-	for(UClass* ReplicatedClass : AllReplicatedClasses)
-	{
-		if(ExplicitlySetClasses.FindByPredicate(
-			[&](const UClass* SetClass) { return ReplicatedClass->IsChildOf(SetClass); }) != nullptr
-			)
-			continue;
-
-			FClassReplicationInfo ClassInfo;
-			InitClassReplicationInfo(ClassInfo, ReplicatedClass, NetDriver->NetServerMaxTickRate);
+        	ClassInfo.ReplicationPeriodFrame = FMath::Max<uint32>(
+                (uint32)FMath::RoundToFloat(NetDriver->NetServerMaxTickRate / ActorCDO->NetUpdateFrequency), 1);
+        	GlobalActorReplicationInfoMap.SetClassInfo(Class, ClassInfo);
+        }
+        
+		
 		
 	}
 	
 }
 
-void UTestRepGraph::ResetGameWorldState()
+void UTestRepGraph::InitGlobalGraphNodes()
 {
-	Super::ResetGameWorldState();
+	Super::InitGlobalGraphNodes();
+
+	PreAllocateRepList(3, 12);
+	PreAllocateRepList(6, 12);
+	PreAllocateRepList(128, 64);
+	PreAllocateRepList(4096, 2);
+
+	AlwaysRelevantNode = CreateNewNode<UReplicationGraphNode_ActorList>();
+	AddGlobalGraphNode(AlwaysRelevantNode);
+	
+
+	UnitNodes = CreateNewNode<UTestRepGraphNode_Units>();
+	AddGlobalGraphNode(UnitNodes);
+	
 }
 
-EClassRepPolicies UTestRepGraph::GetMappingPolicy(UClass* InClass)
+void UTestRepGraph::InitConnectionGraphNodes(UNetReplicationGraphConnection* ConnectionManager)
 {
-	EClassRepPolicies* PolicyPtr = ClassRepNodePolicies.Get(InClass);
-	return PolicyPtr ? *PolicyPtr : EClassRepPolicies::NotRouted;
-	
+	auto AlwaysRelevantNodeForConnection = CreateNewNode<UReplicationGraphNode_AlwaysRelevant_ForConnection>();
+	AddConnectionGraphNode(AlwaysRelevantNodeForConnection, ConnectionManager);
+
+	AlwaysRelevantForConnectionNodes.Add(ConnectionManager->NetConnection, AlwaysRelevantNodeForConnection);
 }
 
 void UTestRepGraph::RouteAddNetworkActorToNodes(const FNewReplicatedActorInfo& ActorInfo,
-                                                FGlobalActorReplicationInfo& GlobalInfo)
+	FGlobalActorReplicationInfo& GlobalInfo)
 {
-	const EClassRepPolicies MappingPolicy = GetMappingPolicy(ActorInfo.Class);
-	switch(MappingPolicy)
+	if(ActorInfo.Class->IsChildOf<AUnit>())
 	{
-		// Don't do anything for there is nothing to do.
-		default:
-		case EClassRepPolicies::NotRouted:
-			break;
+		UnitNodes->NotifyAddNetworkActor(ActorInfo);
+	}
+	else if(ActorInfo.Actor->bAlwaysRelevant)
+	{
+		AlwaysRelevantNode->NotifyAddNetworkActor(ActorInfo);
+	}
+	else if(ActorInfo.Actor->bOnlyRelevantToOwner)
+	{
+		if(auto Node = AlwaysRelevantForConnectionNodes.FindRef(ActorInfo.Actor->GetNetConnection()))
+		{
+			Node->NotifyAddNetworkActor(FNewReplicatedActorInfo(ActorInfo.Actor));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("%s - No Connection Match for %s"),
+				*FString(__FUNCTION__), *ActorInfo.Actor->GetName());
+
+			// Leave no one behind.
+			AlwaysRelevantNode->NotifyAddNetworkActor(ActorInfo);
+		}
 	}
 }
 
 void UTestRepGraph::RouteRemoveNetworkActorToNodes(const FNewReplicatedActorInfo& ActorInfo)
 {
-	const EClassRepPolicies MappingPolicy = GetMappingPolicy(ActorInfo.Class);
-	switch(MappingPolicy)
+	if(ActorInfo.Class == AUnit::StaticClass())
 	{
-		// Don't do anything for there is nothing to do.
-		default:
-        case EClassRepPolicies::NotRouted:
-            break;
+		UnitNodes->NotifyRemoveNetworkActor(ActorInfo, false);
+	}
+	else if(ActorInfo.Actor->bAlwaysRelevant)
+	{
+		AlwaysRelevantNode->NotifyRemoveNetworkActor(ActorInfo);
+	}
+	else if(ActorInfo.Actor->bOnlyRelevantToOwner)
+	{
+		if(auto Node = AlwaysRelevantForConnectionNodes.FindRef(ActorInfo.Actor->GetNetConnection()))
+		{
+			Node->NotifyRemoveNetworkActor(ActorInfo);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("%s - No Connection Match for %s"),
+				*FString(__FUNCTION__), *ActorInfo.Actor->GetName());
+		}
 	}
 }
 
+int32 UTestRepGraph::ServerReplicateActors(float DeltaSeconds)
+{
+	return Super::ServerReplicateActors(DeltaSeconds);
+}
+
+UTestRepGraphNode_Units::UTestRepGraphNode_Units()
+{
+	//bRequiresPrepareForReplicationCall = true;
+}
+
+
+void UTestRepGraphNode_Units::GatherActorListsForConnection(const FConnectionGatherActorListParameters& Params)
+{
+	
+	// Count to max and go back to 0
+	if(ActorsToReplicate.Num() == 0)
+		return;
+	const int i = FMath::Min(ActorsToReplicate.Num()-1, FMath::Max(LastIndex++, 0));
+	if(LastIndex +1 == ActorsToReplicate.Num()) LastIndex = 0;
+	Params.OutGatheredReplicationLists.AddReplicationActorList(ActorsToReplicate[i]);
+}
+
+void UTestRepGraphNode_Units::NotifyAddNetworkActor(const FNewReplicatedActorInfo& Actor)
+{
+	if(ActorsToReplicate.Num() == 0 || ActorsToReplicate.Last().Num() == TargetActorsPerFrame)
+	{
+		ActorsToReplicate.AddDefaulted();
+		UE_LOG(LogTemp, Warning, TEXT("Created new Bucket with Index of %d"), ActorsToReplicate.Num() -1);
+	}
+	ActorsToReplicate.Last().PrepareForWrite();
+	ActorsToReplicate.Last().ConditionalAdd(Actor.Actor);
+}
+
+bool UTestRepGraphNode_Units::NotifyRemoveNetworkActor(const FNewReplicatedActorInfo& Actor, bool bWarnIfNotFound)
+{
+	for(auto& List : ActorsToReplicate)
+	{
+		if(List.Contains(Actor.Actor))
+		{
+			List.Remove(Actor.Actor);
+			return true;
+		}
+	}
+	return false;
+}
+
+void UTestRepGraphNode_Units::LogNode(FReplicationGraphDebugInfo& DebugInfo, const FString& NodeName) const
+{
+	DebugInfo.Log(NodeName);
+	DebugInfo.PushIndent();
+
+	int32 i = 0;
+	for(const auto& List : ActorsToReplicate)
+	{
+		LogActorRepList(DebugInfo, FString::Printf(TEXT("Bucket [%d]"), i++), List);
+	}
+	DebugInfo.PopIndent();
+}

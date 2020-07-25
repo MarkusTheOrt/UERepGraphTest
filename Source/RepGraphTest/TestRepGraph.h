@@ -6,21 +6,6 @@
 #include "ReplicationGraph.h"
 #include "TestRepGraph.generated.h"
 
-enum class EClassRepPolicies : uint8
-{
-	NotRouted,				// Not Replicated at all
-	RelevantAllConnections,	// Always relevant for all connections.
-
-	Buildings,				// Only when in action / being attacked
-	Units,					// Varies in Frames (so we can do batches of units)
-	Static,					// Does not need to update every frame
-	Dynamic,				// Updates every frame
-	Dormancy				// Updates dynamically (between static and Dynamic, based on AActor::GetNetDormancy)
-};
-
-class UReplicationGraphNode_ActorList;
-class UTestRepGraphNode_DynamicRepNode;
-class UTestRepGraphNode_AlwaysRelevant_ForConnection;
 
 /**
  * The Test Replication Graph
@@ -34,102 +19,45 @@ class REPGRAPHTEST_API UTestRepGraph : public UReplicationGraph
 	GENERATED_BODY()
 
 
-	// -----------------------------------------------------------------------------------------------------------------
+	// ---------------------------
 	// UReplicationGraph Overrides
-	
-protected:
-	
+
+	virtual void InitGlobalActorClassSettings() override;	
 	virtual void InitGlobalGraphNodes() override;
-
 	virtual void InitConnectionGraphNodes(UNetReplicationGraphConnection* ConnectionManager) override;
-
-
-	virtual void InitGlobalActorClassSettings() override;
-public:
-	
-	virtual void ResetGameWorldState() override;
-
 	virtual void RouteAddNetworkActorToNodes(const FNewReplicatedActorInfo& ActorInfo,
 	                                         FGlobalActorReplicationInfo& GlobalInfo) override;
-	
 	virtual void RouteRemoveNetworkActorToNodes(const FNewReplicatedActorInfo& ActorInfo) override;
-
-	// -----------------------------------------------------------------------------------------------------------------
-	// Replication Graph Nodes
-	// - These are marked as UPROPERTY so the GC doesn't collect em.
-
-protected:
-
-	UPROPERTY()
-	UTestRepGraphNode_DynamicRepNode* DynNode;
-	
-	UPROPERTY()
-	UReplicationGraphNode_ActorList* AlwaysRelevantNode;
-
-	UPROPERTY()
-	TArray<UClass*> AlwaysRelevantClasses;
-
-	UPROPERTY()
-	TArray<UClass*> UnitClasses;
-
-	UPROPERTY()
-	TArray<UClass*> BuildingClasses;
-
-	UPROPERTY()
-	TArray<UClass*> NonRTSClasses;
-	
-protected:
-		
-	const uint32 MaxUnitBatch = 500ul;
+	virtual int32 ServerReplicateActors(float DeltaSeconds) override;
 
 private:
 
-	/**
-	* Gets the mapping policy based on class
-	* @param InClass - The Class of which is the policy to be determined
-	* @returns Policy for the given class.
-	*/
-	EClassRepPolicies GetMappingPolicy(UClass* InClass);
+	/** Actors that are always replicated, no condition. */
+	UPROPERTY()
+	UReplicationGraphNode_ActorList* AlwaysRelevantNode;
 
-	TClassMap<EClassRepPolicies> ClassRepNodePolicies;
-	
+	/** Actors that are always replicated for specific connections. */
+	UPROPERTY()
+	TMap<UNetConnection*, UReplicationGraphNode_AlwaysRelevant_ForConnection*> AlwaysRelevantForConnectionNodes;
+
+	UPROPERTY()
+	class UTestRepGraphNode_Units* UnitNodes;
 };
 
-/**
- * This Node handles replication of ForConnection relevant things
- * (PlayerController dependent classes)
- */
-UCLASS()
-class UTestRepGraphNode_AlwaysRelevant_ForConnection : public UReplicationGraphNode
-{
-
-	GENERATED_BODY()
-
-public:
-
-	
-	
-};
 
 /**
- * This is our main Rep Graph Node
+ *
  * **************
  * How this works
  * **************
  *
- * Units are divided into batches of max 500. (in worst case we have approx. 2700 units therefore the batches would
- * pan into [500, 500, 500, 500, 500, 200].
- * Each frame One batch gets replicated.
- * so first frame would be the first batch, second frame - second batch and so on...
- * Once we're done (7th Frame) we start again so the order would be 1,2,3,4,5,6,1,2,3,4,5,6.
+ * Units are divided into buckets of max value (see TargetActorsPerFrame below).
+ * In the worst case we have approx. 2700 units (4v4 with 1000 CP)  
+ * Each frame One bucket gets replicated.
+ * so first frame would be the first bucket, second frame - second bucket and so on...
+ * Once we're done with all buckets we start back at the first one
  * By doing so I hope this won't kill the bandwidth while keeping the CPU cool and keeping the game playable with an
- * reasonable responsiveness (this is for an RTS after all)
- *
- * *********
- * Buildings
- * *********
- *
- * Buildings are not considered for replication unless they are in action (being attacked that is)
+ * reasonable responsiveness
  *
  * *****
  * Units
@@ -144,20 +72,39 @@ public:
  * - Units in idle are not considered for replication. - This is not implemented into this Demo project
  * (to ensure we're in worst case scenario)
  * 
- * 
- * 
  */
 UCLASS()
-class UTestRepGraphNode_DynamicRepNode : public UReplicationGraphNode
+class UTestRepGraphNode_Units : public UReplicationGraphNode
 {
 	GENERATED_BODY()
-};
 
-/**
- * Limit Player State Frequency to every second frame (no particular reason, but saves a tiny bit of bandwidth)
- */
-UCLASS()
-class UTestRepGraphNode_PlayerState_FrequencyLimiter : public UReplicationGraphNode
-{
-	GENERATED_BODY()
+	UTestRepGraphNode_Units();
+
+
+public:
+	//virtual void PrepareForReplication() override;
+
+	// Chooses which of the buckets is being replicated to the users.
+	virtual void GatherActorListsForConnection(const FConnectionGatherActorListParameters& Params) override;
+
+	// Adds an Actor to an bucket - This needs improvement
+	virtual void NotifyAddNetworkActor(const FNewReplicatedActorInfo& Actor) override;
+
+	// Removes an actors from its specific bucket - This needs improvement
+	virtual bool NotifyRemoveNetworkActor(const FNewReplicatedActorInfo& Actor, bool bWarnIfNotFound) override;
+
+	// Prints all the buckets to debug (use Net.Repgraph.PrintAll)
+	virtual void LogNode(FReplicationGraphDebugInfo& DebugInfo, const FString& NodeName) const override;
+	
+private:
+
+	// How many Units are being replicated per frame MAX (Units are then being divided into buckets)
+	int32 TargetActorsPerFrame = 60;
+
+	// Buckets
+	TArray<FActorRepListRefView> ActorsToReplicate;
+
+	// The Last bucket index that was being replicated.
+	int32 LastIndex = 0;
+	
 };
