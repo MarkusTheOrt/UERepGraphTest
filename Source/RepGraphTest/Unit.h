@@ -25,9 +25,16 @@ protected:
 	// Lets try not to replicate this one for now.
 	UPROPERTY()
 	TArray<class AMiniUnit*> UnitActors;
+
 	
-	UPROPERTY(Replicated)
+
+	void ChangeTransforms();
+	
+	UPROPERTY(Replicated, ReplicatedUsing=OnRep_UnitTransforms)
 	TArray<FTransform> UnitTransforms;
+
+	UFUNCTION()
+	void OnRep_UnitTransforms();
 
 	UFUNCTION(NetMulticast, Reliable)
 	void OnUnitSpawned(class AMiniUnit* Actor);

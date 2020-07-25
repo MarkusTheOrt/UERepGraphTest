@@ -11,6 +11,11 @@ AMiniUnit::AMiniUnit()
 
 }
 
+void AMiniUnit::SetTransformPtr(FTransform* Ptr)
+{
+	TransformPtr = Ptr;
+}
+
 // Called when the game starts or when spawned
 void AMiniUnit::BeginPlay()
 {

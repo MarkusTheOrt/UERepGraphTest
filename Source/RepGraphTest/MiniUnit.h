@@ -15,11 +15,16 @@ public:
 	
 	AMiniUnit();
 
+	void SetTransformPtr(FTransform* Ptr);
+
+	UFUNCTION(BlueprintImplementableEvent)
+    void MoveToPls(const FVector& Location);
+	
 protected:
 	
 	virtual void BeginPlay() override;
 
-public:	
+	FTransform* TransformPtr = nullptr;
 
 	
 
