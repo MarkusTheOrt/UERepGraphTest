@@ -4,28 +4,34 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Net/UnrealNetwork.h"
 #include "Unit.generated.h"
 
+
+
 UCLASS()
-class REPGRAPHTEST_API AUnit : public ACharacter
+class REPGRAPHTEST_API AUnit : public AActor
 {
 	GENERATED_BODY()
 
 public:
-	// Sets default values for this character's properties
+	
 	AUnit();
 
 protected:
-	// Called when the game starts or when spawned
+	
 	virtual void BeginPlay() override;
 
+	// Lets try not to replicate this one for now.
+	UPROPERTY()
+	TArray<AActor*> UnitActors;
+	
+	UPROPERTY(Replicated)
+	TArray<FTransform> UnitTransforms;
+	
 public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
 
-	// Called to bind functionality to input
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
-
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutProps)const override;
+	
 	
 };

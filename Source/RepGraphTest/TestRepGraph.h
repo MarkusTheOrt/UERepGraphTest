@@ -73,7 +73,7 @@ private:
  * (to ensure we're in worst case scenario)
  * 
  */
-UCLASS()
+UCLASS(Config = Engine)
 class UTestRepGraphNode_Units : public UReplicationGraphNode
 {
 	GENERATED_BODY()
@@ -98,8 +98,10 @@ public:
 	
 private:
 
-	// How many Units are being replicated per frame MAX (Units are then being divided into buckets)
-	int32 TargetActorsPerFrame = 60;
+	// If one Actor represents 20 - 30 Units this might equate up to 1200 units per frame.
+	// How many units do we want to be transmitted per frame?
+	UPROPERTY(Config)
+	int32 TargetActorsPerFrame = 40;
 
 	// Buckets
 	TArray<FActorRepListRefView> ActorsToReplicate;

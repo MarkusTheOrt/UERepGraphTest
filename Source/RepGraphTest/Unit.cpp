@@ -6,9 +6,11 @@
 // Sets default values
 AUnit::AUnit()
 {
- 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
-	bReplicates = true;
+ 	// Do not tick pls.
+	PrimaryActorTick.bCanEverTick = false;
+
+	SetReplicates(true);
+	SetReplicatingMovement(true);
 
 }
 
@@ -19,17 +21,13 @@ void AUnit::BeginPlay()
 	
 }
 
-// Called every frame
-void AUnit::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
 
+void AUnit::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AUnit, UnitTransforms);
+	
 }
 
-// Called to bind functionality to input
-void AUnit::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-
-}
 
